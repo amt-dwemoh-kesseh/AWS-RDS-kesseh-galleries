@@ -4,7 +4,7 @@ Description: 'Secure VPC infrastructure for Kesseh Galleries with RDS PostgreSQL
 Parameters:
   ApplicationName:
     Type: String
-    Default: kesseh-galleries-vpc
+    Default: kesseh-images
   DatabaseUsername:
     Type: String
     Default: postgres
@@ -120,4 +120,4 @@ Resources:
     Properties:
       Name: !Sub "/${ApplicationName}/database/name"
       Type: String
-      Value: kessehgalleries
+      Value: kessehimages

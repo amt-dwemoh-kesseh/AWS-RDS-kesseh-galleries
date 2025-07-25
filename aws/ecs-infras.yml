@@ -4,7 +4,7 @@ Description: 'ECS + ALB + ECR + Parameter Store referencing'
 Parameters:
   ApplicationName:
     Type: String
-    Default: kesseh-galleries-remix
+    Default: kesseh-images
   VPCId:
     Type: String
   PublicSubnetIds:

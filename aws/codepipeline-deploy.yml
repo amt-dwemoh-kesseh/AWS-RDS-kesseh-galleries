@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CI/CD Pipeline for Kesseh Galleries - GitHub to ECS via ECR
+Description: CI/CD Pipeline for Kesseh Images - GitHub to ECS via ECR
 
 Parameters:
   GitHubOwner:
@@ -8,7 +8,7 @@ Parameters:
 
   GitHubRepo:
     Type: String
-    Description: GitHub repo name (e.g. kesseh-galleries)
+    Description: GitHub repo name (e.g. kesseh-images)
 
   GitHubBranch:
     Type: String
@@ -20,15 +20,15 @@ Parameters:
 
   ECRRepoName:
     Type: String
-    Default: kesseh-galleries-remix
+    Default: kesseh-images
 
   ECSServiceName:
     Type: String
-    Default: kesseh-galleries-remix-service
+    Default: kesseh-images-service
 
   ECSClusterName:
     Type: String
-    Default: kesseh-galleries-remix-cluster
+    Default: kesseh-images-cluster
 
   TaskDefinitionArn:
     Type: String
@@ -38,7 +38,7 @@ Resources:
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: kesseh-galleries-codepipeline-role
+      RoleName: kesseh-images-codepipeline-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -64,12 +64,12 @@ Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "kesseh-galleries-artifacts-${AWS::Region}-${AWS::AccountId}"
+      BucketName: !Sub "kesseh-images-artifacts-${AWS::Region}-${AWS::AccountId}"
 
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: kesseh-galleries-codebuild-role
+      RoleName: kesseh-images-codebuild-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -122,7 +122,7 @@ Resources:
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: kesseh-galleries-pipeline
+      Name: kesseh-images-pipeline
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
