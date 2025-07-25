@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Secure VPC infrastructure for Kesseh Galleries with RDS PostgreSQL and Parameter Store'
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: kesseh-galleries-vpc
+  DatabaseUsername:
+    Type: String
+    Default: postgres
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.4.0/24
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for DB
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS SG
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${ApplicationName}-db"
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: 15.4
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      MultiAZ: true
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      BackupRetentionPeriod: 7
+
+  DBHostParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/database/host"
+      Type: String
+      Value: !GetAtt DBInstance.Endpoint.Address
+  DBPortParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/database/port"
+      Type: String
+      Value: !GetAtt DBInstance.Endpoint.Port
+  DBUserParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/database/username"
+      Type: String
+      Value: !Ref DatabaseUsername
+  DBPassParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/database/password"
+      Type: String
+      Value: !Ref DatabasePassword
+  DBNameParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${ApplicationName}/database/name"
+      Type: String
+      Value: kessehgalleries

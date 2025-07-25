@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS + ALB + ECR + Parameter Store referencing'
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: kesseh-galleries-remix
+  VPCId:
+    Type: String
+  PublicSubnetIds:
+    Type: CommaDelimitedList
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+
+Resources:
+  ECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ApplicationName
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+
+  TaskExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      Cpu: 512
+      Memory: 1024
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt TaskExecRole.Arn
+      ContainerDefinitions:
+        - Name: app
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApplicationName}:latest"
+          PortMappings:
+            - ContainerPort: 3001
+          Environment:
+            - Name: DB_HOST
+              Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/host}}"
+            - Name: DB_PORT
+              Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/port}}"
+            - Name: DB_NAME
+              Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/name}}"
+            - Name: DB_USER
+              Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/username}}"
+            - Name: DB_PASS
+              Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/password}}"
