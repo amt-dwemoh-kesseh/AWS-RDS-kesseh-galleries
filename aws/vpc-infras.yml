@@ -1,5 +1,5 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Secure VPC infrastructure for Kesseh Galleries with RDS PostgreSQL and Parameter Store'
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Secure VPC infrastructure for Kesseh Galleries with RDS PostgreSQL and Parameter Store"
 
 Parameters:
   ApplicationName:
@@ -38,23 +38,41 @@ Resources:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
       MapPublicIpOnLaunch: true
+      AvailabilityZone: eu-central-1a
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-public-subnet-1"
+
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
       MapPublicIpOnLaunch: true
+      AvailabilityZone: eu-central-1b
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-public-subnet-2"
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.3.0/24
+      AvailabilityZone: eu-central-1a
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-private-subnet-1"
+
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.4.0/24
+      AvailabilityZone: eu-central-1b
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-private-subnet-2"
 
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -82,7 +100,7 @@ Resources:
       AllocatedStorage: 20
       DBInstanceClass: db.t3.micro
       Engine: postgres
-      EngineVersion: 15.4
+      EngineVersion: 15.13
       MasterUsername: !Ref DatabaseUsername
       MasterUserPassword: !Ref DatabasePassword
       MultiAZ: true
