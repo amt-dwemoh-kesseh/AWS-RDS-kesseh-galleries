@@ -1,0 +1,209 @@
+name: Blue-Green Deploy to ECS via CodeDeploy
+
+on:
+  push:
+    branches: [main, master]
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REPOSITORY: kesseh-images
+  ECS_CLUSTER: kesseh-images-cluster
+  ECS_SERVICE: kesseh-images-service
+  ECS_TASK_DEFINITION: ECS-stack-kesseh-images-TaskDef-Qzrm0225b9dZ
+  CONTAINER_NAME: kesseh-images
+  CODEDEPLOY_APPLICATION: AppECS-kesseh-images-cluster-kesseh-images-service
+  CODEDEPLOY_DEPLOYMENT_GROUP: DgpECS-kesseh-images-cluster-kesseh-images-service
+  ALB_LISTENER_ARN: arn:aws:elasticloadbalancing:eu-central-1:515966510180:loadbalancer/app/kesseh-images-alb/c9c918581f31e89b
+  HEALTH_CHECK_PATH: /api/health
+  S3_BUCKET: kesseh-images-codedeploy-artifacts
+
+jobs:
+  test:
+    name: Test Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Prisma Migrate
+        run: npx prisma migrate deploy --preview-feature
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build app
+        run: npm run build
+
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-uri: ${{ steps.build-image.outputs.image }}
+      image-tag: ${{ steps.build-image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker Image
+        id: build-image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy via CodeDeploy
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition $ECS_TASK_DEFINITION \
+            --region $AWS_REGION \
+            --query taskDefinition > task-definition.json
+
+      - name: Render updated task definition
+        id: render-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ needs.build-and-push.outputs.image-uri }}
+
+      - name: Register new task definition
+        id: register-task-def
+        run: |
+          RENDERED_FILE="${{ steps.render-task.outputs.task-definition }}"
+
+          echo "✅ Task definition file content:"
+          cat "$RENDERED_FILE" | jq .
+
+          echo "📝 Registering task definition with ECS..."
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://$RENDERED_FILE \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "✅ Registered new task definition ARN: $NEW_TASK_DEF_ARN"
+          echo "task-definition-arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Create appspec.yaml
+        run: |
+          echo "📄 Writing appspec.yaml..."
+          cat > appspec.yaml <<EOF
+          version: 0.0
+          Resources:
+            - TargetService:
+                Type: AWS::ECS::Service
+                Properties:
+                  TaskDefinition: "${{ steps.register-task-def.outputs.task-definition-arn }}"
+                  LoadBalancerInfo:
+                    ContainerName: "${{ env.CONTAINER_NAME }}"
+                    ContainerPort: 3001
+                  PlatformVersion: "LATEST"
+          EOF
+
+          echo "✅ appspec.yaml created:"
+          cat appspec.yaml
+
+      - name: Package and Upload to S3
+        run: |
+          zip deployment.zip appspec.yaml
+          aws s3 cp deployment.zip s3://$S3_BUCKET/deployments/deployment-${{ github.sha }}.zip
+
+      - name: Trigger CodeDeploy Deployment
+        id: deploy
+        run: |
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name $CODEDEPLOY_APPLICATION \
+            --deployment-group-name $CODEDEPLOY_DEPLOYMENT_GROUP \
+            --s3-location bucket=$S3_BUCKET,key=deployments/deployment-${{ github.sha }}.zip,bundleType=zip \
+            --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
+            --auto-rollback-configuration enabled=true,events=DEPLOYMENT_FAILURE \
+            --query deploymentId --output text)
+          echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          echo "Deployment started: $DEPLOYMENT_ID"
+
+      - name: Wait for Deployment to Complete
+        run: |
+          aws deploy wait deployment-successful --deployment-id ${{ steps.deploy.outputs.deployment-id }}
+
+      - name: Debug failed deployment (if any)
+        if: failure()
+        run: |
+          echo "⚠️ Deployment failed. Fetching debug info..."
+
+          echo "🧾 Deployment Info:"
+          aws deploy get-deployment \
+            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
+            --query 'deploymentInfo.[deploymentId,status,errorInformation,message]' \
+            --output table
+
+          echo "📋 Listing deployment instances (if any):"
+          aws deploy list-deployment-instances \
+            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
+            --output table || echo "No instances found or ECS deployment in use"
+
+          echo "📌 Listing events:"
+          aws deploy get-deployment \
+            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
+            --query 'deploymentInfo.deploymentOverview' \
+            --output json
+
+      - name: Verify Deployment
+        run: |
+          echo "Deployment completed! Verifying..."
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --region $AWS_REGION \
+            --names kesseh-galleries-alb \
+            --query "LoadBalancers[0].DNSName" --output text)
+
+          echo "Waiting 30 seconds before health check..."
+          sleep 30
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB_DNS${{ env.HEALTH_CHECK_PATH }})
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ App healthy at: http://$ALB_DNS"
+          else
+            echo "❌ Health check failed. HTTP $STATUS"
+            exit 1
+          fi

@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CodeDeploy ECS Blue/Green deployment setup: S3 bucket, CloudWatch alarm, SNS topic.'
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: kesseh-images
+    Description: Name of the application
+
+  TargetGroupGreenARN:
+    Type: String
+    Description: Full ARN of the Green Target Group (e.g., arn:aws:elasticloadbalancing:region:account-id:targetgroup/tg-name/123456789)
+    # No default, must be provided at deployment
+
+Resources:
+  CodeDeployArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ApplicationName}-codedeploy-artifacts"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+
+  HighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ApplicationName}-high-error-rate"
+      AlarmDescription: High error rate detected on green target group
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TargetGroup
+          Value: !Select [1, !Split ["targetgroup/", !Ref TargetGroupGreenARN]]  # Extracts TG ID
+
+  DeploymentNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ApplicationName}-deployment-notifications"
+      DisplayName: !Sub "${ApplicationName} Deployment Notifications"
+
+Outputs:
+  ArtifactsBucket:
+    Description: S3 bucket to store CodeDeploy ECS artifacts
+    Value: !Ref CodeDeployArtifactsBucket
+    Export:
+      Name: !Sub "${ApplicationName}-ArtifactsBucket"
+
+  HighErrorRateAlarmOutput:
+    Description: CloudWatch alarm for monitoring deployment errors
+    Value: !Ref HighErrorRateAlarm
+    Export:
+      Name: !Sub "${ApplicationName}-HighErrorRateAlarm"
+
+  DeploymentNotificationTopicOutput:
+    Description: SNS topic for CodeDeploy notifications
+    Value: !Ref DeploymentNotificationTopic
+    Export:
+      Name: !Sub "${ApplicationName}-DeploymentNotificationTopic"

@@ -1,31 +1,74 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: 'ECS + ALB + ECR + Parameter Store referencing'
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "ECS Infra - Cluster, ALB, TargetGroups, TaskDefinition (No Service)"
 
 Parameters:
   ApplicationName:
     Type: String
     Default: kesseh-images
+
   VPCId:
     Type: String
+
   PublicSubnetIds:
     Type: CommaDelimitedList
+    Description: "Comma-separated public subnet IDs in different AZs (e.g., subnet-abc,subnet-def)"
+
   PrivateSubnetIds:
     Type: CommaDelimitedList
+    Description: "Comma-separated private subnet IDs in different AZs (e.g., subnet-xyz,subnet-uvw)"
 
 Resources:
+
+  # ECR Repository
   ECRRepo:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Ref ApplicationName
 
+  # Security Group for ECS
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      GroupName: !Sub "${ApplicationName}-ecs-sg"
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3001
+          ToPort: 3001
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-ecs-sg"
+
+  # Security Group for ALB
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB Security Group
+      GroupName: !Sub "${ApplicationName}-alb-sg"
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-alb-sg"
+
+  # ECS Cluster
   ECSCluster:
     Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ApplicationName}-cluster"
 
+  # IAM Role for ECS Task Execution
   TaskExecRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -33,7 +76,9 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
 
+  # Task Definition
   TaskDef:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -47,6 +92,12 @@ Resources:
           Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApplicationName}:latest"
           PortMappings:
             - ContainerPort: 3001
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/ecs/${ApplicationName}"
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: ecs
           Environment:
             - Name: DB_HOST
               Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/host}}"
@@ -58,3 +109,83 @@ Resources:
               Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/username}}"
             - Name: DB_PASS
               Value: !Sub "{{resolve:ssm:/${ApplicationName}/database/password}}"
+
+  # Application Load Balancer
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ApplicationName}-alb"
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups: [!Ref ALBSecurityGroup]
+      Scheme: internet-facing
+      Type: application
+
+  # Target Group - Blue
+  TargetGroupBlue:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ApplicationName}-tg-blue"
+      Port: 3001
+      Protocol: HTTP
+      VpcId: !Ref VPCId
+      TargetType: ip
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+
+  # Target Group - Green
+  TargetGroupGreen:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ApplicationName}-tg-green"
+      Port: 3001
+      Protocol: HTTP
+      VpcId: !Ref VPCId
+      TargetType: ip
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+
+  # Listener
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupBlue
+
+Outputs:
+  ECSClusterName:
+    Description: "ECS Cluster Name"
+    Value: !Ref ECSCluster
+
+  TaskDefinitionArn:
+    Description: "Task Definition ARN"
+    Value: !Ref TaskDef
+
+  ALBArn:
+    Description: "ALB ARN"
+    Value: !Ref ALB
+
+  ListenerArn:
+    Description: "ALB Listener ARN"
+    Value: !Ref Listener
+
+  TargetGroupBlueArn:
+    Description: "Blue Target Group ARN"
+    Value: !Ref TargetGroupBlue
+
+  TargetGroupGreenArn:
+    Description: "Green Target Group ARN"
+    Value: !Ref TargetGroupGreen
+
+  ECSSecurityGroupId:
+    Description: "ECS Security Group ID"
+    Value: !Ref ECSSecurityGroup
