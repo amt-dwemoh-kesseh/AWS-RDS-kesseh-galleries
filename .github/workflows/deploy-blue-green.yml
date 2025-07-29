@@ -17,6 +17,7 @@ env:
   ALB_LISTENER_ARN: arn:aws:elasticloadbalancing:eu-central-1:515966510180:loadbalancer/app/kesseh-images-alb/c9c918581f31e89b
   HEALTH_CHECK_PATH: /api/health
   S3_BUCKET: kesseh-images-codedeploy-artifacts
+  PARAMETER_STORE_PATH: /kesseh-images/database
 
 jobs:
   test:
@@ -25,6 +26,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::515966510180:role/GitHubActionsParameterStoreRole
+          role-session-name: GitHubActionsParameterStoreSession
+
+      - name: Get DB Credentials from Parameter Store
+        id: db-creds
+        run: |
+          DB_HOST=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/host" --query Parameter.Value --output text)
+          DB_USER=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/username" --query Parameter.Value --output text)
+          DB_PASS=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/password" --with-decryption --query Parameter.Value --output text)
+          
+          echo "DATABASE_URL=postgresql://$DB_USER:$DB_PASS@$DB_HOST:5432/kessehimages" >> $GITHUB_ENV
+          echo "DB credentials retrieved successfully"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,8 +56,6 @@ jobs:
         run: npm ci
 
       - name: Run Prisma Migrate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npx prisma migrate deploy --preview-feature
 
       - name: Generate Prisma Client
