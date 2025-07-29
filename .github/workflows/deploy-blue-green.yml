@@ -33,7 +33,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: arn:aws:iam::515966510180:role/GitHubActionsParameterStoreRole
-          role-session-name: GitHubActionsParameterStoreSession
+          role-session-name: GitHubActionsSession
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true  # Add this line to bypass tagging
 
       - name: Get DB Credentials from Parameter Store
         id: db-creds
