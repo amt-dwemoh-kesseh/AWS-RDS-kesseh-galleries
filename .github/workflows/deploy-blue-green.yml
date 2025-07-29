@@ -133,7 +133,6 @@ jobs:
         id: register-task-def
         run: |
           RENDERED_FILE="${{ steps.render-task.outputs.task-definition }}"
-
           echo "✅ Task definition file content:"
           cat "$RENDERED_FILE" | jq .
 
@@ -148,7 +147,6 @@ jobs:
 
       - name: Create appspec.yaml
         run: |
-          echo "📄 Writing appspec.yaml..."
           cat > appspec.yaml <<EOF
           version: 0.0
           Resources:
@@ -161,9 +159,7 @@ jobs:
                     ContainerPort: 3001
                   PlatformVersion: "LATEST"
           EOF
-
-          echo "✅ appspec.yaml created:"
-          cat appspec.yaml
+          echo "✅ appspec.yaml created"
 
       - name: Package and Upload to S3
         run: |
@@ -187,34 +183,11 @@ jobs:
         run: |
           aws deploy wait deployment-successful --deployment-id ${{ steps.deploy.outputs.deployment-id }}
 
-      - name: Debug failed deployment (if any)
-        if: failure()
-        run: |
-          echo "⚠️ Deployment failed. Fetching debug info..."
-
-          echo "🧾 Deployment Info:"
-          aws deploy get-deployment \
-            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
-            --query 'deploymentInfo.[deploymentId,status,errorInformation,message]' \
-            --output table
-
-          echo "📋 Listing deployment instances (if any):"
-          aws deploy list-deployment-instances \
-            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
-            --output table || echo "No instances found or ECS deployment in use"
-
-          echo "📌 Listing events:"
-          aws deploy get-deployment \
-            --deployment-id ${{ steps.deploy.outputs.deployment-id }} \
-            --query 'deploymentInfo.deploymentOverview' \
-            --output json
-
       - name: Verify Deployment
         run: |
-          echo "Deployment completed! Verifying..."
           ALB_DNS=$(aws elbv2 describe-load-balancers \
             --region $AWS_REGION \
-            --names kesseh-galleries-alb \
+            --names kesseh-images-alb \
             --query "LoadBalancers[0].DNSName" --output text)
 
           echo "Waiting 30 seconds before health check..."
