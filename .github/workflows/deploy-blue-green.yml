@@ -41,7 +41,7 @@ jobs:
           DB_HOST=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/host" --query Parameter.Value --output text)
           DB_USER=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/username" --query Parameter.Value --output text)
           DB_PASS=$(aws ssm get-parameter --name "$PARAMETER_STORE_PATH/password" --with-decryption --query Parameter.Value --output text)
-          
+
           echo "DATABASE_URL=postgresql://$DB_USER:$DB_PASS@$DB_HOST:5432/kessehimages" >> $GITHUB_ENV
           echo "DB credentials retrieved successfully"
 
