@@ -24,7 +24,7 @@ console.log('BUCKET_NAMESS:', BUCKET_NAME);
 app.use('/api', imagesRouter); // ✅
 
 app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({ status: 'okay', time: new Date().toISOString() });
 });
 
 app.listen(PORT, () => {
