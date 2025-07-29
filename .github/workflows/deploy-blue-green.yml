@@ -56,6 +56,8 @@ jobs:
         run: npm ci
 
       - name: Run Prisma Migrate
+        env:
+          DATABASE_URL: "postgresql://postgres:Kamsel3112@kesseh-images-db.cv66q2y4ula8.eu-central-1.rds.amazonaws.com:5432/kessehimages?schema=public"
         run: npx prisma migrate deploy --preview-feature
 
       - name: Generate Prisma Client
