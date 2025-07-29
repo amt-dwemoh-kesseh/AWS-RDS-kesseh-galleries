@@ -6,7 +6,6 @@ on:
 
 env:
   AWS_REGION: eu-central-1
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
   ECR_REPOSITORY: kesseh-images
   ECS_CLUSTER: kesseh-images-cluster
   ECS_SERVICE: kesseh-images-service
