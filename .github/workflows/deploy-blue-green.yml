@@ -36,14 +36,6 @@ jobs:
           role-session-name: GitHubActionsSession
           role-duration-seconds: 3600
           role-skip-session-tagging: true  # Add this line to bypass tagging
-        
-          # From GitHub Actions (add as a temporary step)
-      - name: Test Raw Connectivity
-        run: |
-          echo "Testing TCP connection..."
-          timeout 5 nc -zv kesseh-images-db.cv66q2y4ula8.eu-central-1.rds.amazonaws.com 5432
-          echo "Testing PostgreSQL protocol..."
-          (echo > /dev/tcp/kesseh-images-db.cv66q2y4ula8.eu-central-1.rds.amazonaws.com/5432) &>/dev/null && echo "Port open" || echo "Port blocked"
       - name: Get DB Credentials from Parameter Store
         id: db-creds
         run: |
