@@ -35,7 +35,7 @@ jobs:
           role-to-assume: arn:aws:iam::515966510180:role/GitHubActionsParameterStoreRole
           role-session-name: GitHubActionsSession
           role-duration-seconds: 3600
-          role-skip-session-tagging: true  # Add this line to bypass tagging
+          role-skip-session-tagging: true # Add this line to bypass tagging
       - name: Get DB Credentials from Parameter Store
         id: db-creds
         run: |
@@ -167,6 +167,12 @@ jobs:
           zip deployment.zip appspec.yaml
           aws s3 cp deployment.zip s3://$S3_BUCKET/deployments/deployment-${{ github.sha }}.zip
 
+      - name: Debug Deployment Input
+        run: |
+          echo "Application Name: $CODEDEPLOY_APPLICATION"
+          echo "Deployment Group: $CODEDEPLOY_DEPLOYMENT_GROUP"
+          echo "S3 Key: deployments/deployment-${{ github.sha }}.zip"
+
       - name: Trigger CodeDeploy Deployment
         id: deploy
         run: |
@@ -180,9 +186,28 @@ jobs:
           echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
           echo "Deployment started: $DEPLOYMENT_ID"
 
+          DEPLOYMENT_ID=$(echo "$DEPLOYMENT_INFO" | jq -r '.deploymentId')
+          echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          echo "Deployment started: $DEPLOYMENT_ID"
+
+      - name: Verify if Deployment Was Actually Triggered
+        run: |
+          if [ -z "${{ steps.deploy.outputs.deployment-id }}" ]; then
+            echo "❌ Deployment ID is empty. Deployment was NOT created."
+            exit 1
+          else
+            echo "✅ Deployment was created with ID: ${{ steps.deploy.outputs.deployment-id }}"
+          fi
+
+
       - name: Wait for Deployment to Complete
         run: |
-          aws deploy wait deployment-successful --deployment-id ${{ steps.deploy.outputs.deployment-id }}
+          set -e
+          if ! aws deploy wait deployment-successful --deployment-id ${{ steps.deploy.outputs.deployment-id }}; then
+            echo "❌ Deployment failed or timed out"
+            aws deploy get-deployment --deployment-id ${{ steps.deploy.outputs.deployment-id }}
+            exit 1
+          fi
 
       - name: Verify Deployment
         run: |
