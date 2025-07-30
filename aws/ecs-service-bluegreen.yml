@@ -1,22 +1,29 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Description: ECS Service for Blue/Green Deployment
 
 Parameters:
   ApplicationName:
     Type: String
     Default: kesseh-images
+
   ECSClusterName:
     Type: String
+
   TaskDefinitionArn:
     Type: String
+
   VPCId:
     Type: String
+
   PrivateSubnetIds:
     Type: CommaDelimitedList
+
   ECSSecurityGroupId:
     Type: String
+
   TargetGroupBlueArn:
     Type: String
+
   TargetGroupGreenArn:
     Type: String
 
@@ -37,9 +44,9 @@ Resources:
           Subnets: !Ref PrivateSubnetIds
       TaskDefinition: !Ref TaskDefinitionArn
       LoadBalancers:
-        - ContainerName: app
+        - ContainerName: kesseh-images
           ContainerPort: 3001
           TargetGroupArn: !Ref TargetGroupBlueArn
-        - ContainerName: app
+        - ContainerName: kesseh-images
           ContainerPort: 3001
           TargetGroupArn: !Ref TargetGroupGreenArn
