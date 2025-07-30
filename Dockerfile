@@ -15,9 +15,6 @@ COPY . .
 # Generate Prisma Client
 RUN npx prisma generate
 
-# Run DB migration (optional for prod-ready app containers)
-RUN npx prisma migrate deploy --preview-feature
-
 # Build frontend
 RUN npm run build
 

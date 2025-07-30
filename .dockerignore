@@ -12,3 +12,4 @@ dist
 .DS_Store
 Dockerfile
 .dockerignore
+LOCAL_SETUP.md
