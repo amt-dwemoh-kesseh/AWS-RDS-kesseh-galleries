@@ -11,7 +11,7 @@ Parameters:
 
   PublicSubnetIds:
     Type: CommaDelimitedList
-    Description: "Comma-separated public subnet IDs in different AZs (e.g., subnet-abc,subnet-defs)"
+    Description: "Comma-separated public subnet IDs in different AZs (e.g., subnet-abc,subnet-defsi)"
 
   PrivateSubnetIds:
     Type: CommaDelimitedList
